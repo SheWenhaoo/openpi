@@ -14,6 +14,7 @@ import torch
 import openpi.models.model as _model
 import openpi.training.config as _config
 from openpi.training.droid_rlds_dataset import DroidRldsDataset
+from openpi.training.skill_dataset import SkillSequenceDataset
 import openpi.transforms as _transforms
 
 T_co = TypeVar("T_co", covariant=True)
@@ -136,6 +137,32 @@ def create_torch_dataset(
         raise ValueError("Repo ID is not set. Cannot create dataset.")
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
+    if repo_id == "skill_dataset":
+        if data_config.skill_dataset_root is None:
+            raise ValueError("skill_dataset_root must be provided for the skill dataset")
+        if data_config.skill_dataset_metadata_path is None:
+            raise ValueError("skill_dataset_metadata_path must be provided for the skill dataset")
+        return SkillSequenceDataset(
+            root_dir=data_config.skill_dataset_root,
+            dataset_info_path=data_config.skill_dataset_metadata_path,
+            split=data_config.skill_dataset_split,
+            action_horizon=action_horizon,
+            image_feature_map=(
+                data_config.skill_camera_map
+                if data_config.skill_camera_map
+                else {
+                    "observation.images.rgb.head": "base_0_rgb",
+                    "observation.images.rgb.left_wrist": "left_wrist_0_rgb",
+                    "observation.images.rgb.right_wrist": "right_wrist_0_rgb",
+                }
+            ),
+            state_key=data_config.skill_state_key,
+            action_key=data_config.skill_action_key,
+            prompt_template=data_config.skill_prompt_template,
+            frame_selection=data_config.skill_frame_selection,
+            max_cached_episodes=data_config.skill_max_cached_episodes,
+            max_cached_videos=data_config.skill_max_cached_videos,
+        )
 
     dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
     dataset = lerobot_dataset.LeRobotDataset(

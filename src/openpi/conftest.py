@@ -1,10 +1,16 @@
 import os
 
-import pynvml
+try:
+    import pynvml
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    pynvml = None
 import pytest
 
 
 def set_jax_cpu_backend_if_no_gpu() -> None:
+    if pynvml is None:
+        os.environ["JAX_PLATFORMS"] = "cpu"
+        return
     try:
         pynvml.nvmlInit()
         pynvml.nvmlShutdown()
