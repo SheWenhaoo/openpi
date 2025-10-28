@@ -96,6 +96,18 @@ class DataConfig:
     # Path to the data filter file for DROID dataset
     filter_dict_path: str | None = None
 
+    # Skill dataset specific settings.
+    skill_dataset_root: str | None = None
+    skill_dataset_metadata_path: str | None = None
+    skill_dataset_split: str = "train"
+    skill_camera_map: dict[str, str] | None = None
+    skill_state_key: str = "observation.state"
+    skill_action_key: str = "action"
+    skill_prompt_template: str | None = None
+    skill_frame_selection: Literal["start", "middle", "end"] = "middle"
+    skill_max_cached_episodes: int = 4
+    skill_max_cached_videos: int = 12
+
 
 class GroupFactory(Protocol):
     def __call__(self, model_config: _model.BaseModelConfig) -> _transforms.Group:
@@ -351,6 +363,48 @@ class LeRobotLiberoDataConfig(DataConfigFactory):
             repack_transforms=repack_transform,
             data_transforms=data_transforms,
             model_transforms=model_transforms,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class SkillDatasetConfig(DataConfigFactory):
+    """Config factory for the skill-based fine-tuning dataset."""
+
+    repo_id: str = "skill_dataset"
+    dataset_root: str = tyro.MISSING
+    dataset_info_path: str = "dataset_info.json"
+    split: str = "train"
+    camera_map: dict[str, str] | None = None
+    prompt_template: str | None = None
+    frame_selection: Literal["start", "middle", "end"] = "middle"
+    max_cached_episodes: int = 4
+    max_cached_videos: int = 12
+    action_key: str = "action"
+    state_key: str = "observation.state"
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        base_config = self.create_base_config(assets_dirs, model_config)
+        camera_map = self.camera_map or {
+            "observation.images.rgb.head": "base_0_rgb",
+            "observation.images.rgb.left_wrist": "left_wrist_0_rgb",
+            "observation.images.rgb.right_wrist": "right_wrist_0_rgb",
+        }
+
+        return dataclasses.replace(
+            base_config,
+            repo_id=self.repo_id,
+            skill_dataset_root=self.dataset_root,
+            skill_dataset_metadata_path=self.dataset_info_path,
+            skill_dataset_split=self.split,
+            skill_camera_map=camera_map,
+            skill_prompt_template=self.prompt_template,
+            skill_frame_selection=self.frame_selection,
+            skill_max_cached_episodes=self.max_cached_episodes,
+            skill_max_cached_videos=self.max_cached_videos,
+            skill_action_key=self.action_key,
+            skill_state_key=self.state_key,
+            model_transforms=ModelTransformFactory()(model_config),
         )
 
 
@@ -633,6 +687,14 @@ _CONFIGS = [
     ),
     #
     # Fine-tuning Libero configs.
+    #
+    TrainConfig(
+        name="pi0_skill_dataset",
+        model=pi0_config.Pi0Config(action_horizon=16),
+        data=SkillDatasetConfig(),
+        weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi0_base/params"),
+        num_train_steps=30_000,
+    ),
     #
     # These train configs define the hyperparameters for fine-tuning the base model on your own dataset.
     # They are used to define key elements like the dataset you are training on, the base checkpoint you
